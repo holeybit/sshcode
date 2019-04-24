@@ -64,6 +64,8 @@ func main() {
 		sshFlags     = flag.String("ssh-flags", "", "custom SSH flags")
 		syncBack     = flag.Bool("b", false, "sync extensions back on termination")
 		printVersion = flag.Bool("version", false, "print version information and exit")
+		port         = flag.String("port", "", "Start VS Code on the provided port. If one is not provided a random one is selected")
+		noOpen       = flag.Bool("no-open", false, "Start VS Code but don't open a Chrome app window")
 	)
 
 	flag.Usage = func() {
@@ -107,14 +109,8 @@ Arguments:
 
 	const codeServerPath = "/tmp/codessh-code-server"
 
-	downloadScript := `set -euxo pipefail || exit 1
+	dlScript := downloadScript(codeServerPath)
 
-mkdir -p ~/.local/share/code-server
-cd ` + filepath.Dir(codeServerPath) + `
-wget -N https://codesrv-ci.cdr.sh/latest-linux
-[ -f ` + codeServerPath + ` ] && rm ` + codeServerPath + `
-ln latest-linux ` + codeServerPath + `
-chmod +x ` + codeServerPath
 	// Downloads the latest code-server and allows it to be executed.
 	sshCmdStr := fmt.Sprintf("ssh" +
 		" " + *sshFlags + " " +
@@ -123,7 +119,7 @@ chmod +x ` + codeServerPath
 	sshCmd := exec.Command("sh", "-c", sshCmdStr)
 	sshCmd.Stdout = os.Stdout
 	sshCmd.Stderr = os.Stderr
-	sshCmd.Stdin = strings.NewReader(downloadScript)
+	sshCmd.Stdin = strings.NewReader(dlScript)
 	err := sshCmd.Run()
 	if err != nil {
 		flog.Fatal("failed to update code-server: %v\n---ssh cmd---\n%s\n---download script---\n%s", err,
@@ -150,7 +146,11 @@ chmod +x ` + codeServerPath
 	}
 
 	flog.Info("starting code-server...")
-	localPort, err := randomPort()
+
+	localPort := *port
+	if localPort == "" {
+		localPort, err = randomPort()
+	}
 	if err != nil {
 		flog.Fatal("failed to find available port: %v", err)
 	}
@@ -160,9 +160,7 @@ chmod +x ` + codeServerPath
 	)
 
 	// Starts code-server and forwards the remote port.
-	sshCmd = exec.Command("sh", "-c",
-		sshCmdStr,
-	)
+	sshCmd = exec.Command("sh", "-c", sshCmdStr)
 	sshCmd.Stdin = os.Stdin
 	sshCmd.Stdout = os.Stdout
 	sshCmd.Stderr = os.Stderr
@@ -190,7 +188,10 @@ chmod +x ` + codeServerPath
 	}
 
 	ctx, cancel = context.WithCancel(context.Background())
-	openBrowser(url)
+
+	if !*noOpen {
+		openBrowser(url)
+	}
 
 	go func() {
 		defer cancel()
@@ -359,4 +360,23 @@ func rsync(src string, dest string, sshFlags string, excludePaths ...string) err
 	}
 
 	return nil
+}
+
+func downloadScript(codeServerPath string) string {
+	return fmt.Sprintf(
+		`set -euxo pipefail || exit 1
+
+mkdir -p ~/.local/share/code-server
+cd %v
+wget -N https://codesrv-ci.cdr.sh/latest-linux
+[ -f %v ] && rm %v
+ln latest-linux %v
+chmod +x %v`,
+		filepath.Dir(codeServerPath),
+		codeServerPath,
+		codeServerPath,
+		codeServerPath,
+		codeServerPath,
+	)
+
 }
