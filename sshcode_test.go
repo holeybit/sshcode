@@ -39,7 +39,7 @@ func TestSSHCode(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		err := sshCode("127.0.0.1", "", options{
-			sshFlags:   sshPortArg(sshPort),
+			sshFlags:   testSSHArgs(sshPort),
 			localPort:  localPort,
 			remotePort: remotePort,
 		})
@@ -283,6 +283,6 @@ QF6+cxHQe0sbMQ/xJU5RYhgnqSa2TjLMju4N2nQ9i/HqI/3p0CPwjFsZWlXmWEK9
 -----END RSA PRIVATE KEY-----
 `
 
-func sshPortArg(port string) string {
-	return "-p " + port
+func testSSHArgs(port string) string {
+	return "-o StrictHostKeyChecking=no -p " + port
 }
