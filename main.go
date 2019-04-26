@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -177,14 +178,19 @@ func sshCode(host, dir string, o options) error {
 	if o.localPort == "" {
 		o.localPort, err = randomPort()
 	}
+	if err != nil {
+		return xerrors.Errorf("failed to find available local port: %w", err)
+	}
 
 	// TODO pick a random remote port
 	if o.remotePort == "" {
-		o.remotePort = o.localPort
+		o.remotePort, err = randomRemotePort(host, o.sshFlags)
 	}
 	if err != nil {
-		return xerrors.Errorf("failed to find available port: %w", err)
+		return xerrors.Errorf("failed to find available remote port: %w", err)
 	}
+
+	flog.Info("Tunneling local port %v to remote port %v", o.localPort, o.remotePort)
 
 	sshCmdStr = fmt.Sprintf("ssh -tt -q -L %v %v %v 'cd %v; %v --host 127.0.0.1 --allow-http --no-auth --port=%v'",
 		o.localPort+":localhost:"+o.remotePort, o.sshFlags, host, dir, codeServerPath, o.remotePort,
@@ -212,9 +218,7 @@ func sshCode(host, dir string, o options) error {
 			return xerrors.Errorf("code-server didn't start in time: %w", ctx.Err())
 		}
 		// Waits for code-server to be available before opening the browser.
-		r, _ := http.NewRequest("GET", url, nil)
-		r = r.WithContext(ctx)
-		resp, err := client.Do(r)
+		resp, err := client.Get(url)
 		if err != nil {
 			continue
 		}
@@ -380,8 +384,6 @@ func syncExtensions(sshFlags string, host string, back bool) error {
 		dest, src = src, dest
 	}
 
-	fmt.Printf("")
-
 	return rsync(src, dest, sshFlags)
 }
 
@@ -403,7 +405,6 @@ func rsync(src string, dest string, sshFlags string, excludePaths ...string) err
 		src, dest,
 	)...,
 	)
-	fmt.Printf("args: %+v\n", cmd.Args)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
@@ -433,8 +434,35 @@ chmod +x %v`,
 
 }
 
+func randomRemotePort(host, sshFlags string) (string, error) {
+	var (
+		sshCmdStr = fmt.Sprintf("ssh %v %v /bin/bash", sshFlags, host)
+		buf       bytes.Buffer
+	)
+
+	cmd := exec.Command("sh", "-c", sshCmdStr)
+	cmd.Stdout = &buf
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = strings.NewReader(randomRemotePortScript)
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(buf.String()), nil
+}
+
 func must(err error) {
 	if err != nil {
 		panic(err)
 	}
 }
+
+const randomRemotePortScript = `
+read LOWERPORT UPPERPORT < /proc/sys/net/ipv4/ip_local_port_range
+while :
+do
+        PORT="$(shuf -i $LOWERPORT-$UPPERPORT -n 1)"
+        ss -lpn | grep -q ":$PORT " || break
+done
+echo $PORT`
