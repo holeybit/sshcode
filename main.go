@@ -140,8 +140,6 @@ func sshCode(host, dir string, o options) error {
 		host + " /bin/bash",
 	)
 
-	fmt.Printf("ssh: %v\n", sshCmdStr)
-
 	sshCmd := exec.Command("sh", "-c", sshCmdStr)
 	sshCmd.Stdout = os.Stdout
 	sshCmd.Stderr = os.Stderr
@@ -440,12 +438,6 @@ func randomRemotePort(host, sshFlags string) (string, error) {
 	}
 
 	return strings.TrimSpace(buf.String()), nil
-}
-
-func must(err error) {
-	if err != nil {
-		panic(err)
-	}
 }
 
 const randomRemotePortScript = `

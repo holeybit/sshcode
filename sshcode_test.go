@@ -29,10 +29,11 @@ func TestSSHCode(t *testing.T) {
 	// start up our jank ssh server
 	trassh(t, sshPort)
 
-	const (
-		localPort  = "9090"
-		remotePort = "9091"
-	)
+	localPort := randomPortExclude(t, sshPort)
+	require.NotEmpty(t, localPort)
+
+	remotePort := randomPortExclude(t, sshPort, localPort)
+	require.NotEmpty(t, remotePort)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -285,4 +286,27 @@ QF6+cxHQe0sbMQ/xJU5RYhgnqSa2TjLMju4N2nQ9i/HqI/3p0CPwjFsZWlXmWEK9
 
 func testSSHArgs(port string) string {
 	return "-o StrictHostKeyChecking=no -p " + port
+}
+
+func randomPortExclude(t *testing.T, exludedPorts ...string) string {
+	valid := func(port string) bool {
+		for _, exPort := range exludedPorts {
+			if exPort == port {
+				return false
+			}
+		}
+		return true
+	}
+
+	maxTries := 10
+	for i := 0; i < maxTries; i++ {
+		port, err := randomPort()
+		require.NoError(t, err)
+
+		if valid(port) {
+			return port
+		}
+	}
+
+	return ""
 }
