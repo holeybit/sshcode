@@ -64,8 +64,8 @@ func main() {
 		sshFlags     = flag.String("ssh-flags", "", "custom SSH flags")
 		syncBack     = flag.Bool("b", false, "sync extensions back on termination")
 		printVersion = flag.Bool("version", false, "print version information and exit")
-		port         = flag.String("port", "", "Start VS Code on the provided port. If one is not provided a random one is selected")
-		noOpen       = flag.Bool("no-open", false, "Start VS Code but don't open a Chrome app window")
+		remotePort   = flag.String("remote-port", "", "Start VS Code on the provided port. If one is not provided a random one is selected")
+		localPort    = flag.String("local-port", "", "Local port used to connect to VS Code. If one is not provided a random one is selected")
 	)
 
 	flag.Usage = func() {
@@ -105,6 +105,24 @@ Arguments:
 		dir = "~"
 	}
 
+	sshCode(host, dir, options{
+		skipSync:   *skipSyncFlag,
+		sshFlags:   *sshFlags,
+		syncBack:   *syncBack,
+		localPort:  *localPort,
+		remotePort: *remotePort,
+	})
+}
+
+type options struct {
+	skipSync   bool
+	syncBack   bool
+	localPort  string
+	remotePort string
+	sshFlags   string
+}
+
+func sshCode(host, dir string, o options) {
 	flog.Info("ensuring code-server is updated...")
 
 	const codeServerPath = "/tmp/codessh-code-server"
@@ -113,10 +131,13 @@ Arguments:
 
 	// Downloads the latest code-server and allows it to be executed.
 	sshCmdStr := fmt.Sprintf("ssh" +
-		" " + *sshFlags + " " +
+		" " + o.sshFlags + " " +
 		host + " /bin/bash",
 	)
-	sshCmd := exec.Command("sh", "-c", sshCmdStr)
+
+	fmt.Printf("ssh: %v\n", sshCmdStr)
+
+	sshCmd := exec.Command("sh", "-c", "ssh -p 10010 127.0.0.1 /bin/bash")
 	sshCmd.Stdout = os.Stdout
 	sshCmd.Stderr = os.Stderr
 	sshCmd.Stdin = strings.NewReader(dlScript)
@@ -124,21 +145,21 @@ Arguments:
 	if err != nil {
 		flog.Fatal("failed to update code-server: %v\n---ssh cmd---\n%s\n---download script---\n%s", err,
 			sshCmdStr,
-			downloadScript,
+			dlScript,
 		)
 	}
 
-	if !*skipSyncFlag {
+	if !o.skipSync {
 		start := time.Now()
 		flog.Info("syncing settings")
-		err = syncUserSettings(*sshFlags, host, false)
+		err = syncUserSettings(o.sshFlags, host, false)
 		if err != nil {
 			flog.Fatal("failed to sync settings: %v", err)
 		}
 		flog.Info("synced settings in %s", time.Since(start))
 
 		flog.Info("syncing extensions")
-		err = syncExtensions(*sshFlags, host, false)
+		err = syncExtensions(o.sshFlags, host, false)
 		if err != nil {
 			flog.Fatal("failed to sync extensions: %v", err)
 		}
@@ -147,7 +168,7 @@ Arguments:
 
 	flog.Info("starting code-server...")
 
-	localPort := *port
+	localPort := o.localPort
 	if localPort == "" {
 		localPort, err = randomPort()
 	}
@@ -156,7 +177,7 @@ Arguments:
 	}
 
 	sshCmdStr = fmt.Sprintf("ssh -tt -q -L %v %v %v 'cd %v; %v --host 127.0.0.1 --allow-http --no-auth --port=%v'",
-		localPort+":localhost:"+localPort, *sshFlags, host, dir, codeServerPath, localPort,
+		o.localPort+":localhost:"+o.remotePort, o.sshFlags, host, dir, codeServerPath, o.remotePort,
 	)
 
 	// Starts code-server and forwards the remote port.
@@ -172,6 +193,10 @@ Arguments:
 	url := "http://127.0.0.1:" + localPort
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+
+	client := http.Client{
+		Timeout: time.Second * 3,
+	}
 	for {
 		if ctx.Err() != nil {
 			flog.Fatal("code-server didn't start in time %v", ctx.Err())
@@ -179,7 +204,7 @@ Arguments:
 		// Waits for code-server to be available before opening the browser.
 		r, _ := http.NewRequest("GET", url, nil)
 		r = r.WithContext(ctx)
-		resp, err := http.DefaultClient.Do(r)
+		resp, err := client.Do(r)
 		if err != nil {
 			continue
 		}
@@ -189,9 +214,11 @@ Arguments:
 
 	ctx, cancel = context.WithCancel(context.Background())
 
-	if !*noOpen {
+	if os.Getenv("DISPLAY") != "" {
 		openBrowser(url)
 	}
+
+	fmt.Printf("WE'RE GUCCIFIED\n")
 
 	go func() {
 		defer cancel()
@@ -206,19 +233,19 @@ Arguments:
 	case <-c:
 	}
 
-	if !*syncBack || *skipSyncFlag {
+	if !o.syncBack || o.skipSync {
 		flog.Info("shutting down")
 		return
 	}
 
 	flog.Info("synchronizing VS Code back to local")
 
-	err = syncExtensions(*sshFlags, host, true)
+	err = syncExtensions(o.sshFlags, host, true)
 	if err != nil {
 		flog.Fatal("failed to sync extensions back: %v", err)
 	}
 
-	err = syncUserSettings(*sshFlags, host, true)
+	err = syncUserSettings(o.sshFlags, host, true)
 	if err != nil {
 		flog.Fatal("failed to user settigns extensions back: %v", err)
 	}
@@ -301,7 +328,13 @@ func syncUserSettings(sshFlags string, host string, back bool) error {
 	if err != nil {
 		return err
 	}
-	const remoteSettingsDir = ".local/share/code-server/User/"
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	var remoteSettingsDir = filepath.Join(home, ".local/share/code-server/User/")
 
 	var (
 		src  = localConfDir + "/"
@@ -321,7 +354,13 @@ func syncExtensions(sshFlags string, host string, back bool) error {
 	if err != nil {
 		return err
 	}
-	const remoteExtensionsDir = ".local/share/code-server/extensions/"
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	var remoteExtensionsDir = filepath.Join(home, ".local/share/code-server/extensions/")
 
 	var (
 		src  = localExtensionsDir + "/"
@@ -330,6 +369,8 @@ func syncExtensions(sshFlags string, host string, back bool) error {
 	if back {
 		dest, src = src, dest
 	}
+
+	fmt.Printf("")
 
 	return rsync(src, dest, sshFlags)
 }
@@ -352,6 +393,7 @@ func rsync(src string, dest string, sshFlags string, excludePaths ...string) err
 		src, dest,
 	)...,
 	)
+	fmt.Printf("args: %+v\n", cmd.Args)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
@@ -379,4 +421,10 @@ chmod +x %v`,
 		codeServerPath,
 	)
 
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
