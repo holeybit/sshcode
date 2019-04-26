@@ -343,12 +343,7 @@ func syncUserSettings(sshFlags string, host string, back bool) error {
 		return err
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-
-	var remoteSettingsDir = filepath.Join(home, ".local/share/code-server/User/")
+	const remoteSettingsDir = "~/.local/share/code-server/User/"
 
 	var (
 		src  = localConfDir + "/"
@@ -369,12 +364,7 @@ func syncExtensions(sshFlags string, host string, back bool) error {
 		return err
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-
-	var remoteExtensionsDir = filepath.Join(home, ".local/share/code-server/extensions/")
+	const remoteExtensionsDir = "~/.local/share/code-server/extensions/"
 
 	var (
 		src  = localExtensionsDir + "/"
