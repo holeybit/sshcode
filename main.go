@@ -105,13 +105,17 @@ Arguments:
 		dir = "~"
 	}
 
-	sshCode(host, dir, options{
+	err := sshCode(host, dir, options{
 		skipSync:   *skipSyncFlag,
 		sshFlags:   *sshFlags,
 		syncBack:   *syncBack,
 		localPort:  *localPort,
 		remotePort: *remotePort,
 	})
+
+	if err != nil {
+		flog.Fatal("error: %v", err)
+	}
 }
 
 type options struct {
@@ -122,7 +126,7 @@ type options struct {
 	sshFlags   string
 }
 
-func sshCode(host, dir string, o options) {
+func sshCode(host, dir string, o options) error {
 	flog.Info("ensuring code-server is updated...")
 
 	const codeServerPath = "/tmp/codessh-code-server"
@@ -143,9 +147,10 @@ func sshCode(host, dir string, o options) {
 	sshCmd.Stdin = strings.NewReader(dlScript)
 	err := sshCmd.Run()
 	if err != nil {
-		flog.Fatal("failed to update code-server: %v\n---ssh cmd---\n%s\n---download script---\n%s", err,
+		return xerrors.Errorf("failed to update code-server: \n---ssh cmd---\n%s\n---download script---\n%s: %w",
 			sshCmdStr,
 			dlScript,
+			err,
 		)
 	}
 
@@ -154,14 +159,15 @@ func sshCode(host, dir string, o options) {
 		flog.Info("syncing settings")
 		err = syncUserSettings(o.sshFlags, host, false)
 		if err != nil {
-			flog.Fatal("failed to sync settings: %v", err)
+			return xerrors.Errorf("failed to sync settings: %w", err)
 		}
+
 		flog.Info("synced settings in %s", time.Since(start))
 
 		flog.Info("syncing extensions")
 		err = syncExtensions(o.sshFlags, host, false)
 		if err != nil {
-			flog.Fatal("failed to sync extensions: %v", err)
+			return xerrors.Errorf("failed to sync extensions: %w", err)
 		}
 		flog.Info("synced extensions in %s", time.Since(start))
 	}
@@ -173,7 +179,7 @@ func sshCode(host, dir string, o options) {
 		localPort, err = randomPort()
 	}
 	if err != nil {
-		flog.Fatal("failed to find available port: %v", err)
+		return xerrors.Errorf("failed to find available port: %w", err)
 	}
 
 	sshCmdStr = fmt.Sprintf("ssh -tt -q -L %v %v %v 'cd %v; %v --host 127.0.0.1 --allow-http --no-auth --port=%v'",
@@ -199,7 +205,7 @@ func sshCode(host, dir string, o options) {
 	}
 	for {
 		if ctx.Err() != nil {
-			flog.Fatal("code-server didn't start in time %v", ctx.Err())
+			return xerrors.Errorf("code-server didn't start in time: %w", ctx.Err())
 		}
 		// Waits for code-server to be available before opening the browser.
 		r, _ := http.NewRequest("GET", url, nil)
@@ -218,8 +224,6 @@ func sshCode(host, dir string, o options) {
 		openBrowser(url)
 	}
 
-	fmt.Printf("WE'RE GUCCIFIED\n")
-
 	go func() {
 		defer cancel()
 		sshCmd.Wait()
@@ -235,20 +239,22 @@ func sshCode(host, dir string, o options) {
 
 	if !o.syncBack || o.skipSync {
 		flog.Info("shutting down")
-		return
+		return nil
 	}
 
 	flog.Info("synchronizing VS Code back to local")
 
 	err = syncExtensions(o.sshFlags, host, true)
 	if err != nil {
-		flog.Fatal("failed to sync extensions back: %v", err)
+		return xerrors.Errorf("failed to sync extensions back: %w", err)
 	}
 
 	err = syncUserSettings(o.sshFlags, host, true)
 	if err != nil {
-		flog.Fatal("failed to user settigns extensions back: %v", err)
+		return xerrors.Errorf("failed to sync user settings settings back: %w", err)
 	}
+
+	return nil
 }
 
 func openBrowser(url string) {
