@@ -141,7 +141,7 @@ func sshCode(host, dir string, o options) error {
 
 	fmt.Printf("ssh: %v\n", sshCmdStr)
 
-	sshCmd := exec.Command("sh", "-c", "ssh -p 10010 127.0.0.1 /bin/bash")
+	sshCmd := exec.Command("sh", "-c", sshCmdStr)
 	sshCmd.Stdout = os.Stdout
 	sshCmd.Stderr = os.Stderr
 	sshCmd.Stdin = strings.NewReader(dlScript)
@@ -174,9 +174,13 @@ func sshCode(host, dir string, o options) error {
 
 	flog.Info("starting code-server...")
 
-	localPort := o.localPort
-	if localPort == "" {
-		localPort, err = randomPort()
+	if o.localPort == "" {
+		o.localPort, err = randomPort()
+	}
+
+	// TODO pick a random remote port
+	if o.remotePort == "" {
+		o.remotePort = o.localPort
 	}
 	if err != nil {
 		return xerrors.Errorf("failed to find available port: %w", err)
@@ -196,7 +200,7 @@ func sshCode(host, dir string, o options) error {
 		flog.Fatal("failed to start code-server: %v", err)
 	}
 
-	url := "http://127.0.0.1:" + localPort
+	url := "http://127.0.0.1:" + o.localPort
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

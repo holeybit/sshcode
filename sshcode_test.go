@@ -23,8 +23,11 @@ func TestSSHCode(t *testing.T) {
 	err := os.Unsetenv("DISPLAY")
 	require.NoError(t, err)
 
+	sshPort, err := randomPort()
+	require.NoError(t, err)
+
 	// start up our jank ssh server
-	trassh(t, "10010")
+	trassh(t, sshPort)
 
 	const (
 		localPort  = "9090"
@@ -36,7 +39,7 @@ func TestSSHCode(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		err := sshCode("127.0.0.1", "", options{
-			sshFlags:   "-p 10010",
+			sshFlags:   sshPortArg(sshPort),
 			localPort:  localPort,
 			remotePort: remotePort,
 		})
@@ -52,10 +55,10 @@ func TestSSHCode(t *testing.T) {
 	wg.Wait()
 }
 
-// trassh is a incomplete, local, insecure ssh server
+// trassh is an incomplete, local, insecure ssh server
 // used for the purpose of testing the implementation without
-// requiring the user to use have their own remote server.
-func trassh(t *testing.T, port string) {
+// requiring the user to have their own remote server.
+func trassh(t *testing.T, port string) io.Closer {
 	private, err := ssh.ParsePrivateKey([]byte(fakeRSAKey))
 	require.NoError(t, err)
 
@@ -116,6 +119,7 @@ func trassh(t *testing.T, port string) {
 			}()
 		}
 	}()
+	return listener
 }
 
 func handleDirectTCPIP(ch ssh.Channel, req *directTCPIPReq, t *testing.T) {
@@ -278,3 +282,7 @@ QF6+cxHQe0sbMQ/xJU5RYhgnqSa2TjLMju4N2nQ9i/HqI/3p0CPwjFsZWlXmWEK9
 5kdld52W7Bu2vQuFbg2Oy7aPhnI+1CqlubOFRgMe4AJND2t9SMTV+rc=
 -----END RSA PRIVATE KEY-----
 `
+
+func sshPortArg(port string) string {
+	return "-p " + port
+}
