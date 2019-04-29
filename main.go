@@ -65,8 +65,6 @@ func main() {
 		sshFlags     = flag.String("ssh-flags", "", "custom SSH flags")
 		syncBack     = flag.Bool("b", false, "sync extensions back on termination")
 		printVersion = flag.Bool("version", false, "print version information and exit")
-		remotePort   = flag.String("remote-port", "", "Start VS Code on the provided port. If one is not provided a random one is selected")
-		localPort    = flag.String("local-port", "", "Local port used to connect to VS Code. If one is not provided a random one is selected")
 	)
 
 	flag.Usage = func() {
@@ -107,11 +105,9 @@ Arguments:
 	}
 
 	err := sshCode(host, dir, options{
-		skipSync:   *skipSyncFlag,
-		sshFlags:   *sshFlags,
-		syncBack:   *syncBack,
-		localPort:  *localPort,
-		remotePort: *remotePort,
+		skipSync: *skipSyncFlag,
+		sshFlags: *sshFlags,
+		syncBack: *syncBack,
 	})
 
 	if err != nil {
@@ -180,7 +176,6 @@ func sshCode(host, dir string, o options) error {
 		return xerrors.Errorf("failed to find available local port: %w", err)
 	}
 
-	// TODO pick a random remote port
 	if o.remotePort == "" {
 		o.remotePort, err = randomRemotePort(host, o.sshFlags)
 	}

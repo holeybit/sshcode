@@ -111,7 +111,7 @@ func trassh(t *testing.T, port string) io.Closer {
 
 						go handleSession(ch, inReqs, t)
 					default:
-						fmt.Printf("unsupported session type: %v\n", c.ChannelType())
+						t.Logf("unsupported session type: %v\n", c.ChannelType())
 						c.Reject(ssh.UnknownChannelType, "unknown channel type")
 					}
 				}
@@ -213,7 +213,6 @@ func handleSession(ch ssh.Channel, in <-chan *ssh.Request, t *testing.T) {
 
 		var exit exitStatus
 		if err != nil {
-			t.Logf("exec err: %v", err)
 			exErr, ok := err.(*exec.ExitError)
 			require.True(t, ok, "Not an exec.ExitError, was %T", err)
 
