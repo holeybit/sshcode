@@ -59,6 +59,31 @@ func flagHelp() string {
 // version is overwritten by ci/build.sh.
 var version string
 
+func usage() {
+	fmt.Printf(`Usage: %v [FLAGS] HOST [DIR]
+Start VS Code via code-server over SSH.
+
+Environment variables:
+		%v use special VS Code settings dir.
+		%v use special VS Code extensions dir.
+
+More info: https://github.com/cdr/sshcode
+
+Arguments:
+%vHOST is passed into the ssh command.
+%vDIR is optional.
+
+%v`,
+		os.Args[0],
+		vsCodeConfigDirEnv,
+		vsCodeExtensionsDirEnv,
+		helpTab,
+		helpTab,
+		flagHelp(),
+	)
+
+}
+
 func main() {
 	var (
 		skipSyncFlag = flag.Bool("skipsync", false, "skip syncing local settings and extensions to remote host")
@@ -67,23 +92,7 @@ func main() {
 		printVersion = flag.Bool("version", false, "print version information and exit")
 	)
 
-	flag.Usage = func() {
-		fmt.Printf(`Usage: %v [FLAGS] HOST [DIR]
-Start VS Code via code-server over SSH.
-
-Environment variables:
-		`+vsCodeConfigDirEnv+`	use special VS Code settings dir.
-		`+vsCodeExtensionsDirEnv+`	use special VS Code extensions dir.
-
-More info: https://github.com/cdr/sshcode
-
-Arguments:
-`+helpTab+`HOST is passed into the ssh command.
-`+helpTab+`DIR is optional.
-
-%v`, os.Args[0], flagHelp(),
-		)
-	}
+	flag.Usage = usage
 
 	flag.Parse()
 	if *printVersion {
@@ -126,15 +135,12 @@ type options struct {
 func sshCode(host, dir string, o options) error {
 	flog.Info("ensuring code-server is updated...")
 
-	const codeServerPath = "/tmp/codessh-code-server"
+	const codeServerPath = "/tmp/code-server"
 
 	dlScript := downloadScript(codeServerPath)
 
 	// Downloads the latest code-server and allows it to be executed.
-	sshCmdStr := fmt.Sprintf("ssh" +
-		" " + o.sshFlags + " " +
-		host + " /bin/bash",
-	)
+	sshCmdStr := fmt.Sprintf("ssh %v %v /bin/bash", o.sshFlags, host)
 
 	sshCmd := exec.Command("sh", "-c", sshCmdStr)
 	sshCmd.Stdout = os.Stdout
