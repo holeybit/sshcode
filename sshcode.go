@@ -315,9 +315,13 @@ func downloadScript(codeServerPath string) string {
 
 mkdir -p ~/.local/share/code-server %v
 cd %v
-wget -N https://codesrv-ci.cdr.sh/latest-linux
+if [[ "$OSTYPE" == "linux-gnu" ]]; then
+  curl -z latest-code-server -o latest-code-server https://codesrv-ci.cdr.sh/latest-linux
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+  curl -z latest-code-server -o latest-code-server https://codesrv-ci.cdr.sh/latest-darwin
+fi
 [ -f %v ] && rm %v
-ln latest-linux %v
+ln latest-code-server %v
 chmod +x %v`,
 		filepath.Dir(codeServerPath),
 		filepath.Dir(codeServerPath),
